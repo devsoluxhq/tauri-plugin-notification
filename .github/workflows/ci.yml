@@ -1,0 +1,107 @@
+# CI for the BeyPilot fork of tauri-plugin-notification.
+#
+# Two independent jobs:
+#   - js:   build the guest JS bundles (tsc + rollup) and confirm they compile.
+#   - rust: fmt + clippy + check the Rust crate. Because this crate depends on
+#           the sibling CEF fork via local path deps (`../tauri-cef/crates/*`),
+#           the Rust job checks out `devsoluxhq/tauri-cef` next to this repo so
+#           Cargo can resolve those paths.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  js:
+    name: JS (tsc + rollup build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # `pnpm build` runs `tsc --emitDeclarationOnly` (full type-check via
+      # noEmitOnError) and then `rollup -c` to (re)generate dist-js/*,
+      # api-iife.js and src/init-iife.js.
+      - name: Build JS bundles
+        run: pnpm build
+
+      # The bundles are committed and must stay in sync with guest-js/*.ts.
+      # Enable this once canonical Rollup output has been committed; until then
+      # it can report drift if the checked-in bundles were generated elsewhere.
+      # - name: Verify generated bundles are in sync
+      #   run: git diff --exit-code -- dist-js api-iife.js src/init-iife.js
+
+  rust:
+    name: Rust (fmt + clippy + check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v6
+        with:
+          path: tauri-plugin-notification
+
+      # Local path deps point at ../tauri-cef/crates/*, so the sibling repo must
+      # sit next to this one on the runner. If tauri-cef is private, supply a
+      # token with read access (PAT or GitHub App) via the commented `token:`.
+      - name: Checkout tauri-cef (path dependency)
+        uses: actions/checkout@v6
+        with:
+          repository: devsoluxhq/tauri-cef
+          path: tauri-cef
+          # token: ${{ secrets.TAURI_CEF_TOKEN }}
+
+      # Tauri v2 Linux system dependencies (needed once the tauri/wry graph is
+      # compiled). Adjust if the CEF fork requires additional packages.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libsoup-3.0-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri-plugin-notification
+
+      - name: Format check
+        working-directory: tauri-plugin-notification
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        working-directory: tauri-plugin-notification
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Cargo check
+        working-directory: tauri-plugin-notification
+        run: cargo check --all-targets
