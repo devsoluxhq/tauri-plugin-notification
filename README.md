@@ -1,3 +1,31 @@
+# tauri-plugin-notification (BeyPilot fork)
+
+> **This is a BeyPilot fork of the upstream `tauri-plugin-notification`, not the
+> crates.io plugin.** It is consumed by the BeyPilot desktop app as a **local
+> path dependency** (and via `[patch.crates-io]`) from
+> `app/src-tauri/vendor/tauri-plugin-notification` → `../packages/tauri-plugin-notification`.
+> Its Rust `tauri`/`tauri-plugin` dependencies point at the sibling
+> `../packages/tauri-cef` CEF fork (Tauri v2.10), so the whole graph uses a
+> single Tauri instance.
+>
+> **Fork-specific behavior (intentional — do not "restore" upstream):**
+> - `init()` registers **only** `notify`, `request_permission`, and
+>   `is_permission_granted` (not the full 16-command upstream set).
+> - On desktop, `request_permission` / `permission_state` are hardcoded to
+>   `Granted`. BeyPilot therefore does **not** trust `plugin:notification|*` for
+>   authorization and instead routes permission/delivery through dedicated Rust
+>   commands in `app/src-tauri/src/native_notifications/` (see the #1152
+>   regression guard in `app/src/lib/nativeNotifications/tauriBridge.ts`).
+> - The global API script (`api-iife.js`, which patches `window.Notification`)
+>   is injected only into webviews that hold notification permission. BeyPilot's
+>   provider `acct_*` child webviews do **not**, so no notification JS is
+>   injected into third-party-origin CEF webviews.
+>
+> The generic upstream documentation below is retained for reference; the
+> crates.io / git-branch install instructions do **not** apply to this fork.
+
+---
+
 ![plugin-notification](https://github.com/tauri-apps/plugins-workspace/raw/v2/plugins/notification/banner.png)
 
 Send message notifications (brief auto-expiring OS window element) to your user. Can also be used with the Notification Web API.
