@@ -6,6 +6,7 @@
     "Tauri Programme within The Commons Conservancy"
   ],
   "repository": "https://github.com/devsoluxhq/tauri-plugin-notification",
+  "packageManager": "pnpm@10.30.3",
   "type": "module",
   "types": "./dist-js/index.d.ts",
   "main": "./dist-js/index.cjs",
