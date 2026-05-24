@@ -16,7 +16,7 @@
     "require": "./dist-js/index.cjs"
   },
   "scripts": {
-    "build": "rollup -c"
+    "build": "tsc --emitDeclarationOnly && rollup -c"
   },
   "files": [
     "dist-js",
@@ -24,6 +24,11 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@tauri-apps/api": "^2.10.1"
+    "@tauri-apps/api": "2.10.1"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "1.0.0",
+    "rollup": "4.59.0",
+    "typescript": "5.9.3"
   }
 }

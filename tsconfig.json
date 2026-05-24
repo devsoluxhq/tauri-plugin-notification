@@ -1,7 +1,16 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "guest-js"
+    "declaration": true,
+    "declarationDir": "dist-js",
+    "lib": ["ES2020", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmitOnError": true,
+    "outDir": "dist-js",
+    "rootDir": "guest-js",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2020"
   },
   "include": ["guest-js/*.ts"]
 }

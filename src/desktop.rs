@@ -81,9 +81,8 @@ mod imp {
     /// ```rust,no_run
     /// use tauri_plugin_notification::NotificationExt;
     /// // first we build the application to access the Tauri configuration
-    /// let app = tauri::Builder::default()
-    ///   // on an actual app, remove the string argument
-    ///   .build(tauri::generate_context!("test/tauri.conf.json"))
+    /// let app = tauri::test::mock_builder()
+    ///   .build(tauri::test::mock_context(tauri::test::noop_assets()))
     ///   .expect("error while building tauri application");
     ///
     /// // shows a notification with the given title and body
@@ -155,7 +154,7 @@ mod imp {
         /// ```no_run
         /// use tauri_plugin_notification::NotificationExt;
         ///
-        /// tauri::Builder::default()
+        /// let _app = tauri::test::mock_builder()
         ///   .setup(|app| {
         ///     app.notification()
         ///       .builder()
@@ -165,8 +164,8 @@ mod imp {
         ///       .unwrap();
         ///     Ok(())
         ///   })
-        ///   .run(tauri::generate_context!("test/tauri.conf.json"))
-        ///   .expect("error while running tauri application");
+        ///   .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        ///   .expect("error while building tauri application");
         /// ```
         ///
         /// ## Platform-specific
@@ -226,7 +225,7 @@ mod imp {
         /// ```no_run
         /// use tauri_plugin_notification::NotificationExt;
         ///
-        /// tauri::Builder::default()
+        /// let _app = tauri::test::mock_builder()
         ///   .setup(move |app| {
         ///     app.notification().builder()
         ///       .title("Tauri")
@@ -235,8 +234,8 @@ mod imp {
         ///       .unwrap();
         ///     Ok(())
         ///   })
-        ///   .run(tauri::generate_context!("test/tauri.conf.json"))
-        ///   .expect("error while running tauri application");
+        ///   .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        ///   .expect("error while building tauri application");
         /// ```
         #[cfg(feature = "windows7-compat")]
         #[cfg_attr(docsrs, doc(cfg(feature = "windows7-compat")))]
