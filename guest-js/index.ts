@@ -9,16 +9,19 @@
  * @module
  */
 
-import {
-  invoke,
-  type PluginListener,
-  addPluginListener
-} from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
+import type { PermissionState } from '@tauri-apps/api/core'
 
 export type { PermissionState } from '@tauri-apps/api/core'
 
 /**
  * Options to send a notification.
+ *
+ * Platform support varies. On desktop (Windows/macOS/Linux) only `title`,
+ * `body`, `icon`, and `sound` are applied; the remaining fields (`schedule`,
+ * `attachments`, `actionTypeId`, `group`, `inboxLines`, `largeBody`,
+ * `visibility`, `number`, `channelId`, the Android icon fields, etc.) are
+ * mobile-only and are silently ignored on desktop.
  *
  * @since 2.0.0
  */
@@ -28,10 +31,11 @@ interface Options {
    */
   id?: number
   /**
-   * Identifier of the {@link Channel} that deliveres this notification.
+   * Identifier of the channel that delivers this notification (Android).
    *
-   * If the channel does not exist, the notification won't fire.
-   * Make sure the channel exists with {@link listChannels} and {@link createChannel}.
+   * If the channel does not exist, the notification won't fire. Channels are
+   * managed natively by the host app; this fork's JS API does not expose
+   * channel management commands.
    */
   channelId?: string
   /**
@@ -237,79 +241,10 @@ interface Attachment {
   url: string
 }
 
-interface Action {
-  id: string
-  title: string
-  requiresAuthentication?: boolean
-  foreground?: boolean
-  destructive?: boolean
-  input?: boolean
-  inputButtonTitle?: string
-  inputPlaceholder?: string
-}
-
-interface ActionType {
-  /**
-   * The identifier of this action type
-   */
-  id: string
-  /**
-   * The list of associated actions
-   */
-  actions: Action[]
-  hiddenPreviewsBodyPlaceholder?: string
-  customDismissAction?: boolean
-  allowInCarPlay?: boolean
-  hiddenPreviewsShowTitle?: boolean
-  hiddenPreviewsShowSubtitle?: boolean
-}
-
-interface PendingNotification {
-  id: number
-  title?: string
-  body?: string
-  schedule: Schedule
-}
-
-interface ActiveNotification {
-  id: number
-  tag?: string
-  title?: string
-  body?: string
-  group?: string
-  groupSummary: boolean
-  data: Record<string, string>
-  extra: Record<string, unknown>
-  attachments: Attachment[]
-  actionTypeId?: string
-  schedule?: Schedule
-  sound?: string
-}
-
-enum Importance {
-  None = 0,
-  Min,
-  Low,
-  Default,
-  High
-}
-
 enum Visibility {
   Secret = -1,
   Private,
   Public
-}
-
-interface Channel {
-  id: string
-  name: string
-  description?: string
-  sound?: string
-  lights?: boolean
-  lightColor?: string
-  vibration?: boolean
-  importance?: Importance
-  visibility?: Visibility
 }
 
 /**
@@ -323,10 +258,16 @@ interface Channel {
  * @since 2.0.0
  */
 async function isPermissionGranted(): Promise<boolean> {
-  if (window.Notification.permission !== 'default') {
-    return await Promise.resolve(window.Notification.permission === 'granted')
-  }
-  return await invoke('plugin:notification|is_permission_granted')
+  // The registered `is_permission_granted` command returns `true` / `false` /
+  // `null` (the last for the prompt / not-yet-decided state). Treat the unknown
+  // state as "not granted" so the return type stays an honest boolean. This
+  // invokes the plugin command directly and does NOT depend on the init script
+  // having patched `window.Notification`.
+  return (
+    (await invoke<boolean | null>(
+      'plugin:notification|is_permission_granted'
+    )) ?? false
+  )
 }
 
 /**
@@ -346,7 +287,18 @@ async function isPermissionGranted(): Promise<boolean> {
  * @since 2.0.0
  */
 async function requestPermission(): Promise<NotificationPermission> {
-  return await window.Notification.requestPermission()
+  // Invoke the registered `request_permission` command directly. The plugin
+  // reports a `PermissionState` ('granted' | 'denied' | 'prompt' |
+  // 'prompt-with-rationale'); map the prompt states onto the Web Notification
+  // API's `NotificationPermission` union ('default') so callers get a stable,
+  // web-compatible value without relying on the init script.
+  const permission = await invoke<PermissionState>(
+    'plugin:notification|request_permission'
+  )
+  if (permission === 'prompt' || permission === 'prompt-with-rationale') {
+    return 'default'
+  }
+  return permission
 }
 
 /**
@@ -365,242 +317,28 @@ async function requestPermission(): Promise<NotificationPermission> {
  * }
  * ```
  *
+ * Note: this is fire-and-forget — it returns `void` (matching the Web
+ * Notification constructor) so dispatch failures cannot be awaited or caught
+ * here. Use `await invoke('plugin:notification|notify', ...)` directly if you
+ * need to handle errors.
+ *
  * @since 2.0.0
  */
 function sendNotification(options: Options | string): void {
-  if (typeof options === 'string') {
-    new window.Notification(options)
-  } else {
-    new window.Notification(options.title, options)
-  }
+  // Invoke the registered `notify` command directly rather than going through
+  // the `window.Notification` constructor (which only exists once the init
+  // script has patched it). The Rust `notify` command accepts `{ options }`.
+  const opts = typeof options === 'string' ? { title: options } : options
+  void invoke('plugin:notification|notify', { options: opts })
 }
 
-/**
- * Register actions that are performed when the user clicks on the notification.
- *
- * @example
- * ```typescript
- * import { registerActionTypes } from '@tauri-apps/plugin-notification';
- * await registerActionTypes([{
- *   id: 'tauri',
- *   actions: [{
- *     id: 'my-action',
- *     title: 'Settings'
- *   }]
- * }])
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function registerActionTypes(types: ActionType[]): Promise<void> {
-  await invoke('plugin:notification|register_action_types', { types })
-}
-
-/**
- * Retrieves the list of pending notifications.
- *
- * @example
- * ```typescript
- * import { pending } from '@tauri-apps/plugin-notification';
- * const pendingNotifications = await pending();
- * ```
- *
- * @returns A promise resolving to the list of pending notifications.
- *
- * @since 2.0.0
- */
-async function pending(): Promise<PendingNotification[]> {
-  return await invoke('plugin:notification|get_pending')
-}
-
-/**
- * Cancels the pending notifications with the given list of identifiers.
- *
- * @example
- * ```typescript
- * import { cancel } from '@tauri-apps/plugin-notification';
- * await cancel([-34234, 23432, 4311]);
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function cancel(notifications: number[]): Promise<void> {
-  await invoke('plugin:notification|cancel', { notifications })
-}
-
-/**
- * Cancels all pending notifications.
- *
- * @example
- * ```typescript
- * import { cancelAll } from '@tauri-apps/plugin-notification';
- * await cancelAll();
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function cancelAll(): Promise<void> {
-  await invoke('plugin:notification|cancel')
-}
-
-/**
- * Retrieves the list of active notifications.
- *
- * @example
- * ```typescript
- * import { active } from '@tauri-apps/plugin-notification';
- * const activeNotifications = await active();
- * ```
- *
- * @returns A promise resolving to the list of active notifications.
- *
- * @since 2.0.0
- */
-async function active(): Promise<ActiveNotification[]> {
-  return await invoke('plugin:notification|get_active')
-}
-
-/**
- * Removes the active notifications with the given list of identifiers.
- *
- * @example
- * ```typescript
- * import { cancel } from '@tauri-apps/plugin-notification';
- * await cancel([-34234, 23432, 4311])
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function removeActive(
-  notifications: Array<{ id: number; tag?: string }>
-): Promise<void> {
-  await invoke('plugin:notification|remove_active', { notifications })
-}
-
-/**
- * Removes all active notifications.
- *
- * @example
- * ```typescript
- * import { removeAllActive } from '@tauri-apps/plugin-notification';
- * await removeAllActive()
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function removeAllActive(): Promise<void> {
-  await invoke('plugin:notification|remove_active')
-}
-
-/**
- * Creates a notification channel.
- *
- * @example
- * ```typescript
- * import { createChannel, Importance, Visibility } from '@tauri-apps/plugin-notification';
- * await createChannel({
- *   id: 'new-messages',
- *   name: 'New Messages',
- *   lights: true,
- *   vibration: true,
- *   importance: Importance.Default,
- *   visibility: Visibility.Private
- * });
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function createChannel(channel: Channel): Promise<void> {
-  await invoke('plugin:notification|create_channel', { ...channel })
-}
-
-/**
- * Removes the channel with the given identifier.
- *
- * @example
- * ```typescript
- * import { removeChannel } from '@tauri-apps/plugin-notification';
- * await removeChannel();
- * ```
- *
- * @returns A promise indicating the success or failure of the operation.
- *
- * @since 2.0.0
- */
-async function removeChannel(id: string): Promise<void> {
-  await invoke('plugin:notification|delete_channel', { id })
-}
-
-/**
- * Retrieves the list of notification channels.
- *
- * @example
- * ```typescript
- * import { channels } from '@tauri-apps/plugin-notification';
- * const notificationChannels = await channels();
- * ```
- *
- * @returns A promise resolving to the list of notification channels.
- *
- * @since 2.0.0
- */
-async function channels(): Promise<Channel[]> {
-  return await invoke('plugin:notification|listChannels')
-}
-
-async function onNotificationReceived(
-  cb: (notification: Options) => void
-): Promise<PluginListener> {
-  return await addPluginListener('notification', 'notification', cb)
-}
-
-async function onAction(
-  cb: (notification: Options) => void
-): Promise<PluginListener> {
-  return await addPluginListener('notification', 'actionPerformed', cb)
-}
-
-export type {
-  Attachment,
-  Options,
-  Action,
-  ActionType,
-  PendingNotification,
-  ActiveNotification,
-  Channel,
-  ScheduleInterval
-}
+export type { Attachment, Options, ScheduleInterval }
 
 export {
-  Importance,
   Visibility,
   sendNotification,
   requestPermission,
   isPermissionGranted,
-  registerActionTypes,
-  pending,
-  cancel,
-  cancelAll,
-  active,
-  removeActive,
-  removeAllActive,
-  createChannel,
-  removeChannel,
-  channels,
-  onNotificationReceived,
-  onAction,
   Schedule,
   ScheduleEvery
 }

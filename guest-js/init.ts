@@ -9,12 +9,18 @@ import type { Options } from './index'
   let permissionSettable = false
   let permissionValue = 'default'
 
-  async function isPermissionGranted(): Promise<boolean> {
+  // Reads the real permission state as a tri-state: `true` (granted) /
+  // `false` (denied) / `null` (prompt — not yet decided). The bootstrap below
+  // needs all three to set `window.Notification.permission` per the Web spec,
+  // so this is intentionally not the boolean helper exported from `index.ts`.
+  async function readPermissionState(): Promise<boolean | null> {
     // @ts-expect-error __TEMPLATE_windows__ will be replaced in rust before it's injected.
     if (window.Notification.permission !== 'default' || __TEMPLATE_windows__) {
-      return await Promise.resolve(window.Notification.permission === 'granted')
+      return window.Notification.permission === 'granted'
     }
-    return await invoke('plugin:notification|is_permission_granted')
+    return await invoke<boolean | null>(
+      'plugin:notification|is_permission_granted'
+    )
   }
 
   function setNotificationPermission(value: NotificationPermission): void {
@@ -24,17 +30,21 @@ import type { Options } from './index'
     permissionSettable = false
   }
 
-  async function requestPermission(): Promise<PermissionState> {
-    return await invoke<PermissionState>(
+  // This patches `window.Notification.requestPermission`, whose Web spec
+  // contract resolves to a `NotificationPermission` ('default' | 'granted' |
+  // 'denied'). Map the plugin's prompt states to 'default' and return that
+  // mapped value — returning the raw 'prompt' / 'prompt-with-rationale' would
+  // break callers that compare against the Web permission strings.
+  async function requestPermission(): Promise<NotificationPermission> {
+    const permission = await invoke<PermissionState>(
       'plugin:notification|request_permission'
-    ).then((permission) => {
-      setNotificationPermission(
-        permission === 'prompt' || permission === 'prompt-with-rationale'
-          ? 'default'
-          : permission
-      )
-      return permission
-    })
+    )
+    const mapped: NotificationPermission =
+      permission === 'prompt' || permission === 'prompt-with-rationale'
+        ? 'default'
+        : permission
+    setNotificationPermission(mapped)
+    return mapped
   }
 
   async function sendNotification(options: string | Options): Promise<void> {
@@ -56,16 +66,20 @@ import type { Options } from './index'
   window.Notification = function (title, options) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const opts = options || {}
-    void sendNotification(
+    // Fire-and-forget like the Web Notification constructor, but surface invoke
+    // failures instead of silently dropping the rejection (mirrors the desktop
+    // Rust `[notification] failed to ...` logging).
+    sendNotification(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       Object.assign(opts, {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         title
       })
-    )
+    ).catch((error) => {
+      console.error('[notification] failed to send notification', error)
+    })
   }
 
-  // @ts-expect-error tauri does not have sync IPC :(
   window.Notification.requestPermission = requestPermission
 
   Object.defineProperty(window.Notification, 'permission', {
@@ -80,7 +94,12 @@ import type { Options } from './index'
     }
   })
 
-  void isPermissionGranted().then(function (response) {
+  // Prompt-state handling here intentionally differs from the module API
+  // (`index.ts`): the boolean `isPermissionGranted()` exported there maps the
+  // unknown/prompt state (`null`) to `false`, whereas the
+  // `window.Notification.permission` property must reflect the Web spec's
+  // 'default' string. Both follow the Web Notification spec for their shapes.
+  void readPermissionState().then(function (response) {
     if (response === null) {
       setNotificationPermission('default')
     } else {

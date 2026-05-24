@@ -1,3 +1,13 @@
 Cargo.lock
 node_modules/
 target/
+
+# miscellaneous
+/.vs
+.DS_Store
+.Thumbs.db
+*.sublime*
+.idea
+debug.log
+TODO.md
+.aider*

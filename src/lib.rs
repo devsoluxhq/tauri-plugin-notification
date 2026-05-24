@@ -71,10 +71,12 @@ impl<R: Runtime> NotificationBuilder<R> {
         self
     }
 
-    /// Identifier of the {@link Channel} that deliveres this notification.
+    /// Identifier of the Android notification channel that delivers this
+    /// notification.
     ///
-    /// If the channel does not exist, the notification won't fire.
-    /// Make sure the channel exists with {@link listChannels} and {@link createChannel}.
+    /// If the channel does not exist, the notification won't fire. This fork
+    /// does not expose channel-management commands; channels are created and
+    /// managed by the host application on Android.
     pub fn channel_id(mut self, id: impl Into<String>) -> Self {
         self.data.channel_id.replace(id.into());
         self
@@ -177,11 +179,14 @@ impl<R: Runtime> NotificationBuilder<R> {
     }
 
     /// Adds an extra payload to store in the notification.
-    pub fn extra(mut self, key: impl Into<String>, value: impl Serialize) -> Self {
+    ///
+    /// Returns an error if `value` cannot be serialized to JSON, instead of
+    /// panicking.
+    pub fn extra(mut self, key: impl Into<String>, value: impl Serialize) -> crate::Result<Self> {
         self.data
             .extra
-            .insert(key.into(), serde_json::to_value(value).unwrap());
-        self
+            .insert(key.into(), serde_json::to_value(value)?);
+        Ok(self)
     }
 
     /// If true, the notification cannot be dismissed by the user on Android.
@@ -203,6 +208,24 @@ impl<R: Runtime> NotificationBuilder<R> {
     /// Changes the notification presentation to be silent on iOS (no badge, no sound, not listed).
     pub fn silent(mut self) -> Self {
         self.data.silent = true;
+        self
+    }
+
+    /// Sets the notification's lock-screen visibility.
+    ///
+    /// Applied on Android (`NotificationCompat.Builder.setVisibility`); ignored
+    /// on other platforms.
+    pub fn visibility(mut self, visibility: Visibility) -> Self {
+        self.data.visibility.replace(visibility);
+        self
+    }
+
+    /// Sets the number of items this notification represents.
+    ///
+    /// Applied on Android (`NotificationCompat.Builder.setNumber`); ignored on
+    /// other platforms.
+    pub fn number(mut self, number: i32) -> Self {
+        self.data.number.replace(number);
         self
     }
 }

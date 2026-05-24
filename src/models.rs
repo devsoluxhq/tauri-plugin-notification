@@ -5,6 +5,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use serde::{de::Error as DeError, Deserialize, Deserializer, Serialize, Serializer};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use url::Url;
 
@@ -145,6 +146,20 @@ mod iso8601 {
     }
 }
 
+/// Notification visibility on the lock screen.
+///
+/// Mirrors the JS `Visibility` enum (`Secret = -1`, `Private = 0`,
+/// `Public = 1`) and serializes to those integer values, which is what the
+/// Android layer (`NotificationCompat.Builder.setVisibility`) expects. Only
+/// consumed on Android today; ignored on other platforms.
+#[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr)]
+#[repr(i8)]
+pub enum Visibility {
+    Secret = -1,
+    Private = 0,
+    Public = 1,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotificationData {
@@ -176,6 +191,10 @@ pub struct NotificationData {
     pub(crate) auto_cancel: bool,
     #[serde(default)]
     pub(crate) silent: bool,
+    /// Lock-screen visibility (Android). Absent fields deserialize to `None`.
+    pub(crate) visibility: Option<Visibility>,
+    /// Number of items the notification represents (Android `setNumber`).
+    pub(crate) number: Option<i32>,
 }
 
 fn default_id() -> i32 {
@@ -205,6 +224,8 @@ impl Default for NotificationData {
             ongoing: false,
             auto_cancel: false,
             silent: false,
+            visibility: None,
+            number: None,
         }
     }
 }
@@ -342,6 +363,10 @@ mod android {
     use serde::{Deserialize, Serialize};
     use serde_repr::{Deserialize_repr, Serialize_repr};
 
+    // Reuse the crate-level `Visibility` so channels and notifications share a
+    // single definition instead of two divergent enums.
+    use super::Visibility;
+
     #[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr)]
     #[repr(u8)]
     pub enum Importance {
@@ -356,14 +381,6 @@ mod android {
         fn default() -> Self {
             Self::Default
         }
-    }
-
-    #[derive(Debug, Clone, Copy, Serialize_repr, Deserialize_repr)]
-    #[repr(i8)]
-    pub enum Visibility {
-        Secret = -1,
-        Private = 0,
-        Public = 1,
     }
 
     #[derive(Debug, Serialize, Deserialize)]

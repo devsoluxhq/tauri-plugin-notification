@@ -2,24 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-const COMMANDS: &[&str] = &[
-    "notify",
-    "request_permission",
-    "is_permission_granted",
-    "register_action_types",
-    "register_listener",
-    "cancel",
-    "get_pending",
-    "remove_active",
-    "get_active",
-    "check_permissions",
-    "show",
-    "batch",
-    "list_channels",
-    "delete_channel",
-    "create_channel",
-    "permission_state",
-];
+// BeyPilot fork: only the three commands registered in `init()`'s
+// `invoke_handler` (see src/lib.rs). The full upstream 16-command set is
+// intentionally not exposed; do not re-add commands here without also
+// registering them in the invoke handler.
+const COMMANDS: &[&str] = &["notify", "request_permission", "is_permission_granted"];
 
 fn main() {
     let result = tauri_plugin::Builder::new(COMMANDS)

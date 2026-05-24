@@ -211,8 +211,17 @@ mod imp {
                 let _ = notify_rust::set_application(&self.identifier);
             }
 
+            // `notify_rust`'s `show()` can block while it talks to the OS
+            // notification server (e.g. the D-Bus daemon on Linux), so it is
+            // dispatched off the calling task. We can't propagate the result
+            // back to the JS caller through this fire-and-forget boundary, so
+            // at minimum surface failures in the logs instead of silently
+            // dropping them. Callers therefore still receive `Ok(())` once the
+            // notification has been *scheduled*, not necessarily *delivered*.
             tauri::async_runtime::spawn(async move {
-                let _ = notification.show();
+                if let Err(error) = notification.show() {
+                    log::error!("[notification] failed to show desktop notification: {error}");
+                }
             });
 
             Ok(())

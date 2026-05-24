@@ -10,6 +10,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// Failed to serialize a value into the notification payload.
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
     #[cfg(mobile)]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
